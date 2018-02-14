@@ -149,7 +149,7 @@ void run_simulation(int rank, int nbTasks) {
     maxNbParts = nparticles - (nparticles / nbTasks) * (nbTasks - 1);
 
   double t = 0.0, dt = 0.01;
-  int idIter = 0;
+  //int idIter = 0;
   while (t < T_FINAL && nparticles>0) {
     //printf("\n\n\nTime : %lf and process %d\n", t, rank);
     /*if(idIter < 2){
@@ -195,7 +195,7 @@ void run_simulation(int rank, int nbTasks) {
           valsBroad[4 * id + 3] = particles[j].y_vel;
         }      
       }
-      MPI_Bcast(valsBroad, nbSent * 4, MPI_DOUBLE, i, MPI_COMM_WORLD);
+      MPI_Bcast(valsBroad, nbSent * 4, MPI_DOUBLE, i, MPI_COMM_WORLD);//AlltoAll, gather, allgather
       //printf("At time %lf, rocess %d received/sent broadcast from process %d for parts [%d, %d]\n", t, rank, i, rank * (nparticles / nbT), rank * (nparticles / nbT) + nbSent);
       if(i != rank){//copy received data
         int j;
