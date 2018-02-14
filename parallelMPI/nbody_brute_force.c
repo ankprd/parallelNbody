@@ -213,13 +213,13 @@ void run_simulation(int rank, int nbTasks) {
 		//printf("At time %lf after broadcast, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
 		
     double newMaxSpeed, newMaxAcc;
-    printf("At time %lf Process %d before reduce : max_acc -> %lf max_speed -> %lf\n", t, rank, max_acc, max_speed);	
+    //printf("At time %lf Process %d before reduce : max_acc -> %lf max_speed -> %lf\n", t, rank, max_acc, max_speed);	
     MPI_Allreduce(&max_speed, &newMaxSpeed, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 		//printf("At time %lf after first reduce, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
     MPI_Allreduce(&max_acc, &newMaxAcc, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     max_acc = newMaxAcc;
     max_speed = newMaxSpeed;
-    printf("At time %lf Process %d finished reduce : max_acc -> %lf max_speed -> %lf\n", t, rank, max_acc, max_speed);	
+    //printf("At time %lf Process %d finished reduce : max_acc -> %lf max_speed -> %lf\n", t, rank, max_acc, max_speed);	
 		//printf("At time %lf after all reduce, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
 		
     /* Adjust dt based on maximum speed and acceleration--this

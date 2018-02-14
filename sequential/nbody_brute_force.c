@@ -138,8 +138,8 @@ void debugPrint(){
 void run_simulation() {
   double t = 0.0, dt = 0.01;
   while (t < T_FINAL && nparticles>0) {
-    printf("\n\n\nTime : %lf\n", t);
-    debugPrint();
+    //printf("\n\n\nTime : %lf\n", t);
+    //debugPrint();
     /* Update time. */
     t += dt;
     /* Move particles with the current and compute rms velocity. */
@@ -149,7 +149,7 @@ void run_simulation() {
        simple rule tries to insure that no velocity will change
        by more than 10% */
 
-    printf("at time %lf finished reduce : max_acc -> %lf max_speed -> %lf\n", t, max_acc, max_speed);	
+    //printf("at time %lf finished reduce : max_acc -> %lf max_speed -> %lf\n", t, max_acc, max_speed);	
     dt = 0.1*max_speed/max_acc;
 
     /* Plot the movement of the particle */
