@@ -127,9 +127,19 @@ void print_all_particles(FILE* f) {
   }
 }
 
+void debugPrint(){
+  int i;
+  for(i = 0; i < nparticles; i++){
+    particle_t *p = &particles[i];
+    printf("particle %d ={pos=(%f,%f), vel=(%f,%f)}\n", i, p->x_pos, p->y_pos, p->x_vel, p->y_vel);
+  }
+}
+
 void run_simulation() {
   double t = 0.0, dt = 0.01;
   while (t < T_FINAL && nparticles>0) {
+    printf("\n\n\nTime : %lf\n", t);
+    debugPrint();
     /* Update time. */
     t += dt;
     /* Move particles with the current and compute rms velocity. */
@@ -139,6 +149,7 @@ void run_simulation() {
        simple rule tries to insure that no velocity will change
        by more than 10% */
 
+    printf("at time %lf finished reduce : max_acc -> %lf max_speed -> %lf\n", t, max_acc, max_speed);	
     dt = 0.1*max_speed/max_acc;
 
     /* Plot the movement of the particle */
@@ -184,7 +195,8 @@ int main(int argc, char**argv)
 
   double duration = (t2.tv_sec -t1.tv_sec)+((t2.tv_usec-t1.tv_usec)/1e6);
 
-#ifdef DUMP_RESULT
+#ifdef DUMP_RESULT  
+  printf("DUMP RESULT");
   FILE* f_out = fopen("particles.log", "w");
   assert(f_out);
   print_all_particles(f_out);

@@ -127,6 +127,14 @@ void print_all_particles(FILE* f) {
   }
 }
 
+void debugPrint(int process, double time){
+  int i;
+  for(i = 0; i < nparticles; i++){
+    particle_t *p = &particles[i];
+    printf("P %d t %lf : particle %d ={pos=(%f,%f), vel=(%f,%f)}\n", process, time, i, p->x_pos, p->y_pos, p->x_vel, p->y_vel);
+  }
+}
+
 void run_simulation(int rank, int nbTasks) {
   //int nbTasks;
   //MPI_Comm_size(MPI_COMM_WORLD, &nbTasks);
@@ -141,12 +149,24 @@ void run_simulation(int rank, int nbTasks) {
     maxNbParts = nparticles - (nparticles / nbTasks) * (nbTasks - 1);
 
   double t = 0.0, dt = 0.01;
+  int idIter = 0;
   while (t < T_FINAL && nparticles>0) {
+    //printf("\n\n\nTime : %lf and process %d\n", t, rank);
+    /*if(idIter < 2){
+        debugPrint(rank, t);
+        //printf("IDiTER : % d, rank %d\n", idIter, rank);
+    }*/
     //printf("in process %d, at time %lf, npart %d\n", rank, t, nparticles);
 		/* Update time. */
     t += dt;
     /* Move particles with the current and compute rms velocity. */
     all_move_particles(dt, firstPart, lastPart);
+
+    /*if(idIter < 2){
+        debugPrint(rank, t + 1);
+        //printf("IDiTER : % d, rank %d\n", idIter, rank);
+    }
+    idIter++;*/
     //printf("At time %lf, Process %d finished moving particles from %d to %d \n", t, rank, firstPart, lastPart);
 		//MPI_Barrier(MPI_COMM_WORLD);
     //Broadcast results -> new parts pos and speed -> envoyer un tableau de 4 * nbParts concernees qui contient pos et vel a la suite
@@ -179,8 +199,9 @@ void run_simulation(int rank, int nbTasks) {
       //printf("At time %lf, rocess %d received/sent broadcast from process %d for parts [%d, %d]\n", t, rank, i, rank * (nparticles / nbT), rank * (nparticles / nbT) + nbSent);
       if(i != rank){//copy received data
         int j;
-        for(j = rank * (nparticles / nbTasks); j < rank * (nparticles / nbTasks) + nbSent; j++){
-          int id = j - rank * (nparticles / nbTasks);
+        int fP = i * (nparticles / nbTasks);
+        for(j = fP; j < fP + nbSent; j++){
+          int id = j - fP;
           particles[j].x_pos = valsBroad[4 * id];
           particles[j].y_pos = valsBroad[4 * id + 1];
           particles[j].x_vel = valsBroad[4 * id + 2];
@@ -191,13 +212,14 @@ void run_simulation(int rank, int nbTasks) {
     }
 		//printf("At time %lf after broadcast, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
 		
-    int newMaxSpeed, newMaxAcc;
+    double newMaxSpeed, newMaxAcc;
+    printf("At time %lf Process %d before reduce : max_acc -> %lf max_speed -> %lf\n", t, rank, max_acc, max_speed);	
     MPI_Allreduce(&max_speed, &newMaxSpeed, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 		//printf("At time %lf after first reduce, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
     MPI_Allreduce(&max_acc, &newMaxAcc, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     max_acc = newMaxAcc;
     max_speed = newMaxSpeed;
-    //printf("Process %d finished reduce : max_acc -> %lf max_speed -> %lf\n", rank, max_acc, max_speed);	
+    printf("At time %lf Process %d finished reduce : max_acc -> %lf max_speed -> %lf\n", t, rank, max_acc, max_speed);	
 		//printf("At time %lf after all reduce, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
 		
     /* Adjust dt based on maximum speed and acceleration--this
