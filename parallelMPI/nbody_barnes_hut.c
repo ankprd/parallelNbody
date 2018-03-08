@@ -10,6 +10,7 @@
 #include <sys/time.h>
 #include <assert.h>
 #include <unistd.h>
+#include <mpi.h> 
 
 #ifdef DISPLAY
 #include <X11/Xlib.h>
@@ -63,7 +64,7 @@ void compute_force(particle_t*p, double x_pos, double y_pos, double mass) {
   p->y_force += grav_base*y_sep;
 }
 
-/* compute the force that node n acts on particle p */
+/* compute the force that node n acts on particle p */ //AND MOVES IT
 void compute_force_on_particle(node_t* n, particle_t *p) {
   if(! n || n->n_particles==0) {
     return;
@@ -118,21 +119,30 @@ void compute_force_on_particle(node_t* n, particle_t *p) {
   }
 }
 
-void compute_force_in_node(node_t *n) {
-  if(!n) return;
+int compute_force_in_node(node_t *n, int fPart, int lPart, int dec) {
+  if(!n) return 0;
 
   if(n->particle) {
-    particle_t*p = n->particle;
-    p->x_force = 0;
-    p->y_force = 0;
-    compute_force_on_particle(root, p);
+    if(fPart <= dec && dec < lPart){
+      particle_t*p = n->particle;
+      p->x_force = 0;
+      p->y_force = 0;
+      compute_force_on_particle(root, p);
+    }
+    return 1;
   }
+
+  if(dec > lPart || dec + n->n_particles < fPart)
+    return n->n_particles;
+
   if(n->children) {
     int i;
+    int nbPasses = 0;
     for(i=0; i<4; i++) {
-      compute_force_in_node(&n->children[i]);
+      nbPasses += compute_force_in_node(&n->children[i], fPart, lPart, dec + nbPasses);
     }
   }
+  return n->n_particles;
 }
 
 /* compute the new position/velocity */
@@ -188,11 +198,13 @@ void move_particles_in_node(node_t*n, double step, node_t *new_root) {
 
   Update positions, velocity, and acceleration.
   Return local computations.
+
+  UNUSED BECAUSE COMMUNICATION NEEDED BEFORE CONSTRUCTING NEXT TREE
 */
-void all_move_particles(double step)
+void all_move_particles(double step, int fPart, int lPart)
 {
   /* First calculate force for particles. */
-  compute_force_in_node(root);
+  compute_force_in_node(root, fPart, lPart);
 
   node_t* new_root = malloc(sizeof(node_t));
   init_node(new_root, NULL, XMIN, XMAX, YMIN, YMAX);
@@ -205,21 +217,34 @@ void all_move_particles(double step)
   root = new_root;
 }
 
-void run_simulation() {
+void run_simulation(int rank, int nbT) {
   double t = 0.0, dt = 0.01;
+
+  int fPart, lPart; //TODO A CALC
 
   while (t < T_FINAL && nparticles>0) {
     /* Update time. */
     t += dt;
     /* Move particles with the current and compute rms velocity. */
-    all_move_particles(dt);
+    int unused = compute_force_in_node(root, fPart, lPart, 0);
+
+    node_t* new_root = malloc(sizeof(node_t));
+    init_node(new_root, NULL, XMIN, XMAX, YMIN, YMAX);
+
+    //TODO COMMUNICATION
+
+    /* then move all particles and return statistics */
+    move_particles_in_node(root, step, new_root);
+
+    free_node(root);
+    free(root);
+    root = new_root;
 
     /* Adjust dt based on maximum speed and acceleration--this
        simple rule tries to insure that no velocity will change
        by more than 10% */
 
     dt = 0.1*max_speed/max_acc;
-
     /* Plot the movement of the particle */
 #if DISPLAY
     node_t *n = root;
@@ -243,6 +268,12 @@ void insert_all_particles(int nparticles, particle_t*particles, node_t*root) {
 */
 int main(int argc, char**argv)
 {
+  MPI_Init(&argc, &argv); 
+  int rank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	int nbTasks;
+	MPI_Comm_size(MPI_COMM_WORLD, &nbTasks);
+
   if(argc >= 2) {
     nparticles = atoi(argv[1]);
   }
@@ -257,6 +288,7 @@ int main(int argc, char**argv)
   all_init_particles(nparticles, particles);
   insert_all_particles(nparticles, particles, root);
 
+if(rank == 0){
   /* Initialize thread data structures */
 #ifdef DISPLAY
   /* Open an X window to display the particles */
@@ -298,6 +330,11 @@ int main(int argc, char**argv)
   /* Close the X window used to display the particles */
   XCloseDisplay(theDisplay);
 #endif
+  }
 
+  else
+    run_simulation(rank, nbTasks);
+
+  MPI_Finalize(); 
   return 0;
 }
