@@ -12,7 +12,6 @@
 #include <unistd.h>
 #include <mpi.h> 
 #include <omp.h>
-#include <algorithm>
 
 #ifdef DISPLAY
 #include <X11/Xlib.h>
@@ -35,6 +34,30 @@ double max_speed = 0;
 
 MPI_Comm ActiveTasks;
 
+double max(double a, double b)
+{
+	if (a < b)
+	{
+		return b;
+	}
+	else
+	{
+		return a;
+	}
+}
+
+
+double min(double a, double b)
+{
+	if (a < b)
+	{
+		return a;
+	}
+	else
+	{
+		return b;
+	}
+}
 void init() {
 	/* Nothing to do */
 }
@@ -79,8 +102,8 @@ void move_particle(particle_t*p, double step) {
 	double cur_speed = sqrt(speed_sq);
 
 	sum_speed_sq += speed_sq;
-	max_acc = MAX(max_acc, cur_acc);
-	max_speed = MAX(max_speed, cur_speed);
+	max_acc = max(max_acc, cur_acc);
+	max_speed = max(max_speed, cur_speed);
 }
 
 
@@ -159,12 +182,12 @@ void run_simulation(int rank, int nbTasks) {
       
       int i;
       for (i = 0; i < nbTasks; i++) {
-         startPosTask[i] = (partsPerTask * i + std::min(nparticles % nbTasks, i)) * 4;
-         sizeTask[i] = (partsPerTasks + std::min(nparticles % nbTasks, i + 1) - std::min(nparticles % nbTasks, i)) * 4;
+         startPosTask[i] = (partsPerTask * i + min(nparticles % nbTasks, i)) * 4;
+         sizeTask[i] = (partsPerTask + min(nparticles % nbTasks, i + 1) - min(nparticles % nbTasks, i)) * 4;
       }
       
    
-	int firstPart = startPosPart[rank] / 4;
+	int firstPart = startPosTask[rank] / 4;
 	int lastPart = sizeTask[rank] / 4;
 
 		double* rcvVal = (double*)malloc(sizeof(double) * nparticles * 4);
