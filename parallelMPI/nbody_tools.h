@@ -32,4 +32,6 @@ node_t* alloc_node();
 
 void free_root(node_t*root);
 
+int min(int a, int b);
+
 #endif	/* NBODY_TOOLS_H */

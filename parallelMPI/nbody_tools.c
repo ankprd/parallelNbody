@@ -26,7 +26,7 @@ void draw_node(node_t* n) {
   draw_rect(x1, y1, x2, y2);
 #endif
 
-  if(n->particle) {
+  if(n->particle && n->particle->mass >= 0.5) {
     int x = POS_TO_SCREEN(n->particle->x_pos);
     int y = POS_TO_SCREEN(n->particle->y_pos);
     draw_point (x,y);
@@ -269,4 +269,10 @@ void free_node(node_t* n) {
     }
     mem_free(&mem_node, n->children);
   }
+}
+
+int min(int a, int b){
+    if(a < b)
+      return a;
+    return b;
 }

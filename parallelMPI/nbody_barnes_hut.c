@@ -27,6 +27,7 @@ int nparticles=10;      /* number of particles */
 float T_FINAL=1.0;     /* simulation end time */
 
 particle_t*particles;
+particle_t*newParticles;
 
 node_t *root;
 
@@ -119,11 +120,11 @@ void compute_force_on_particle(node_t* n, particle_t *p) {
   }
 }
 
-int compute_force_in_node(node_t *n, int fPart, int lPart, int dec) {
+int compute_force_in_node(node_t *n, int fPart, int lPart, int idP) {
   if(!n) return 0;
 
   if(n->particle) {
-    if(fPart <= dec && dec < lPart){
+    if(fPart <= idP && idP < lPart){
       particle_t*p = n->particle;
       p->x_force = 0;
       p->y_force = 0;
@@ -132,127 +133,72 @@ int compute_force_in_node(node_t *n, int fPart, int lPart, int dec) {
     return 1;
   }
 
-  if(dec > lPart || dec + n->n_particles < fPart)
+  if(idP >= lPart || idP + n->n_particles < fPart)
     return n->n_particles;
 
   if(n->children) {
     int i;
     int nbPasses = 0;
     for(i=0; i<4; i++) {
-      nbPasses += compute_force_in_node(&n->children[i], fPart, lPart, dec + nbPasses);
+      int temp = compute_force_in_node(&n->children[i], fPart, lPart, idP + nbPasses);
+      nbPasses += temp;
     }
   }
   return n->n_particles;
 }
 
-/* compute the new position/velocity */
-void move_particle(particle_t*p, double step, node_t* new_root) {
+void move_and_save_particle(particle_t*p, double step, int idP) {
+  if(p->mass >= 0.5){//otherwise particle was marked as deleted, and won't be printed or anything, so let's just not move it around
+    p->x_pos += (p->x_vel)*step;
+    p->y_pos += (p->y_vel)*step;
+    double x_acc = p->x_force/p->mass;
+    double y_acc = p->y_force/p->mass;
+    p->x_vel += x_acc*step;
+    p->y_vel += y_acc*step;
 
-  p->x_pos += (p->x_vel)*step;
-  p->y_pos += (p->y_vel)*step;
-  double x_acc = p->x_force/p->mass;
-  double y_acc = p->y_force/p->mass;
-  p->x_vel += x_acc*step;
-  p->y_vel += y_acc*step;
+    /* compute statistics */
+    double cur_acc = (x_acc*x_acc + y_acc*y_acc);
+    cur_acc = sqrt(cur_acc);
+    double speed_sq = (p->x_vel)*(p->x_vel) + (p->y_vel)*(p->y_vel);
+    double cur_speed = sqrt(speed_sq);
 
-  /* compute statistics */
-  double cur_acc = (x_acc*x_acc + y_acc*y_acc);
-  cur_acc = sqrt(cur_acc);
-  double speed_sq = (p->x_vel)*(p->x_vel) + (p->y_vel)*(p->y_vel);
-  double cur_speed = sqrt(speed_sq);
-
-  sum_speed_sq += speed_sq;
-  max_acc = MAX(max_acc, cur_acc);
-  max_speed = MAX(max_speed, cur_speed);
-
-  p->node = NULL;
-  if(p->x_pos < new_root->x_min ||
-     p->x_pos > new_root->x_max ||
-     p->y_pos < new_root->y_min ||
-     p->y_pos > new_root->y_max) {
-    free(p);
-    nparticles--;
-  } else {
-    insert_particle(p, new_root);
+    sum_speed_sq += speed_sq;
+    max_acc = MAX(max_acc, cur_acc);
+    max_speed = MAX(max_speed, cur_speed);
   }
+  p->node = NULL;
+  if(p->x_pos < XMIN ||
+     p->x_pos > XMAX ||
+     p->y_pos < YMIN ||
+     p->y_pos > YMAX) {
+    p->mass = 0;//marks the particle as deleted
+  } 
+  newParticles[idP] = *p;
 }
 
 /* compute the new position of the particles in a node */
-void move_particles_in_node(node_t*n, double step, node_t *new_root) {
-  if(!n) return;
+int move_and_save_particles_in_node(node_t*n, double step, int fPart, int lPart, int idP) {
+  if(!n) return 0;
 
   if(n->particle) {
-    particle_t*p = n->particle;
-    move_particle(p, step, new_root);
-  }
-  if(n->children) {
-    int i;
-    for(i=0; i<4; i++) {
-      move_particles_in_node(&n->children[i], step, new_root);
+    if(fPart <= idP && idP < lPart){
+      particle_t*p = n->particle;
+      move_and_save_particle(p, step, idP);
     }
   }
-}
 
-/*
-  Move particles one time step.
+  if(idP >= lPart || idP + n->n_particles < fPart)
+    return n->n_particles;
 
-  Update positions, velocity, and acceleration.
-  Return local computations.
-
-  UNUSED BECAUSE COMMUNICATION NEEDED BEFORE CONSTRUCTING NEXT TREE
-*/
-void all_move_particles(double step, int fPart, int lPart)
-{
-  /* First calculate force for particles. */
-  compute_force_in_node(root, fPart, lPart);
-
-  node_t* new_root = malloc(sizeof(node_t));
-  init_node(new_root, NULL, XMIN, XMAX, YMIN, YMAX);
-
-  /* then move all particles and return statistics */
-  move_particles_in_node(root, step, new_root);
-
-  free_node(root);
-  free(root);
-  root = new_root;
-}
-
-void run_simulation(int rank, int nbT) {
-  double t = 0.0, dt = 0.01;
-
-  int fPart, lPart; //TODO A CALC
-
-  while (t < T_FINAL && nparticles>0) {
-    /* Update time. */
-    t += dt;
-    /* Move particles with the current and compute rms velocity. */
-    int unused = compute_force_in_node(root, fPart, lPart, 0);
-
-    node_t* new_root = malloc(sizeof(node_t));
-    init_node(new_root, NULL, XMIN, XMAX, YMIN, YMAX);
-
-    //TODO COMMUNICATION
-
-    /* then move all particles and return statistics */
-    move_particles_in_node(root, step, new_root);
-
-    free_node(root);
-    free(root);
-    root = new_root;
-
-    /* Adjust dt based on maximum speed and acceleration--this
-       simple rule tries to insure that no velocity will change
-       by more than 10% */
-
-    dt = 0.1*max_speed/max_acc;
-    /* Plot the movement of the particle */
-#if DISPLAY
-    node_t *n = root;
-    clear_display();
-    draw_node(n);
-    flush_display();
-#endif
+  if(n->children) {
+    int i;
+    int nbPasses = 0;
+    for(i=0; i<4; i++) {
+      int temp = move_and_save_particles_in_node(&n->children[i], step, fPart, lPart, idP + nbPasses);
+      nbPasses += temp;
+    }
   }
+  return n->n_particles;
 }
 
 /* create a quad-tree from an array of particles */
@@ -261,6 +207,107 @@ void insert_all_particles(int nparticles, particle_t*particles, node_t*root) {
   for(i=0; i<nparticles; i++) {
     insert_particle(&particles[i], root);
   }
+}
+
+void run_simulation(int rank, int nbT) {
+  double t = 0.0, dt = 0.01;
+
+  int nbPart = nparticles / nbT;
+  if(rank < nparticles % nbT)
+    nbPart++;
+  int fPart = rank * nbPart;
+  if(rank >= nparticles % nbT)
+    fPart += (nparticles % nbT);
+  int lPart = fPart + nbPart;
+
+  double* rcvVal = (double*)malloc(sizeof(double) * nparticles * 5);
+	double* sndVal = (double*)malloc(sizeof(double) * nbPart * 5);
+  int* nbPPerTask = (int*)malloc(sizeof(int) * nbT + 1);
+
+  if (rcvVal == 0 || sndVal == 0 || nbPPerTask == 0) {
+		printf("Malloc failed in process %d\n", rank);
+		return;
+  }
+
+  int curT;
+  nbPPerTask[0] = 0;
+  for(curT = 0; curT < nbT; curT++){
+    nbPPerTask[curT + 1] = nparticles / nbT;
+    if(curT < nparticles % nbT)
+      nbPPerTask[curT + 1]++;
+    nbPPerTask[curT + 1] *= 5;//car on va s'en servir dans le allGatherV et 5 car on envoie la masse aussi mtn
+  }
+  /*printf("Pour nbT = %d et nbparts = %d in process %d\n", nbT, nparticles, rank);
+  for(curT = 0; curT <= nbT; curT++)
+    printf("in rank %d curT : %d -> %d\n", rank, curT, nbPPerTask[curT + 1]);
+  printf("\n");*/
+
+  while (t < T_FINAL && nparticles>0) {
+    /* Update time. */
+    t += dt;
+
+    /*constructs tree*/
+    init();
+    printf("init of node root worked in rank %d\n", rank);
+    insert_all_particles(nparticles, particles, root);
+    printf("insertion of all parts worked in %d\n", rank);
+    fflush(stdout);
+
+    /* Calculates forces applied on particles from fPart to lPart*/
+    int unused = compute_force_in_node(root, fPart, lPart, 0);
+
+    /* changes their pos/velocity accordingly and saves them in newParticles at pos [fpart, lpart[ */
+    unused = move_and_save_particles_in_node(root, dt, fPart, lPart, 0);
+
+    //TODO COMMUNICATION
+    int i, id;
+		for (i = fPart; i < lPart; i++) {
+			id = i - fPart;
+			sndVal[5 * id] = newParticles[i].x_pos;
+			sndVal[5 * id + 1] = newParticles[i].y_pos;
+			sndVal[5 * id + 2] = newParticles[i].x_vel;
+			sndVal[5 * id + 3] = newParticles[i].y_vel;
+      sndVal[5 * id + 4] = newParticles[i].mass;
+		}
+    MPI_Allgatherv(sndVal, nbPart * 5, MPI_DOUBLE, rcvVal, nbPPerTask + 1, nbPPerTask, MPI_DOUBLE, MPI_COMM_WORLD);
+
+    for (i = 0; i < nparticles; i++) {
+			particles[i].x_pos = rcvVal[5 * i];
+			particles[i].y_pos = rcvVal[5 * i + 1];
+			particles[i].x_vel = rcvVal[5 * i + 2];
+			particles[i].y_vel = rcvVal[5 * i + 3];
+      particles[i].mass = rcvVal[5 * i + 4];
+			//printf("Process %d updated particle %d\n", rank, i);
+		}
+
+    double newMaxSpeed, newMaxAcc;
+    //printf("At time %lf Process %d before reduce : max_acc -> %lf max_speed -> %lf\n", t, rank, max_acc, max_speed);	
+		MPI_Allreduce(&max_speed, &newMaxSpeed, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+		//printf("At time %lf after first reduce, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
+		MPI_Allreduce(&max_acc, &newMaxAcc, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+
+    max_acc = newMaxAcc;
+    max_speed = newMaxSpeed;
+
+    free_node(root);
+    free(root);
+
+    /* Adjust dt based on maximum speed and acceleration--this
+       simple rule tries to insure that no velocity will change
+       by more than 10% */
+
+    dt = 0.1*max_speed/max_acc;
+    /* Plot the movement of the particle */
+#if DISPLAY
+    if(rank == 0){
+    node_t *n = root;
+    clear_display();
+    draw_node(n);
+    flush_display();
+    }
+#endif
+  }
+  free(root);
 }
 
 /*
@@ -281,12 +328,12 @@ int main(int argc, char**argv)
     T_FINAL = atof(argv[2]);
   }
 
-  init();
-
   /* Allocate global shared arrays for the particles data set. */
   particles = malloc(sizeof(particle_t)*nparticles);
+  newParticles = malloc(sizeof(particle_t)*nparticles);
   all_init_particles(nparticles, particles);
-  insert_all_particles(nparticles, particles, root);
+  //insert_all_particles(nparticles, particles, root);
+  //printf("init of all parts worked\n");
 
 if(rank == 0){
   /* Initialize thread data structures */
@@ -299,7 +346,7 @@ if(rank == 0){
   gettimeofday(&t1, NULL);
 
   /* Main thread starts simulation ... */
-  run_simulation();
+  run_simulation(rank, nbTasks);
 
   gettimeofday(&t2, NULL);
 
