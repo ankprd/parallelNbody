@@ -291,12 +291,20 @@ void run_simulation(int rank, int nbT) {
 
     node_t* new_root = malloc(sizeof(node_t));
     init_node(new_root, NULL, XMIN, XMAX, YMIN, YMAX);
+    printf("init of node root worked in rank %d\n", rank);
+    fflush(stdout);
 
     /* then move all particles and return statistics */
     insert_all_particles(nparticles, particles, new_root);
+    printf("insertion of all parts worked in %d\n", rank);
+    fflush(stdout);
 
     free_node(root);
+    printf("freenod ok in rank %d\n", rank);
+    fflush(stdout);
     free(root);
+    printf("free root ok in rank %d\n", rank);
+    fflush(stdout);
     root = new_root;
 
     /* Adjust dt based on maximum speed and acceleration--this
