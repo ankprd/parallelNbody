@@ -270,9 +270,3 @@ void free_node(node_t* n) {
     mem_free(&mem_node, n->children);
   }
 }
-
-int min(int a, int b){
-    if(a < b)
-      return a;
-    return b;
-}

@@ -40,6 +40,7 @@ void mem_init(struct memory_t *mem, size_t block_size, int nb_blocks)
   end_addr += alloc_size;
   /* Le dernier bloc a son pointeur a NULL */
   p->suivant = NULL;
+  //printf("mem init : mtn debutListe = %d\n", mem->debutListe);
 }
 
 /**************************************************************************/
@@ -49,6 +50,7 @@ void mem_init(struct memory_t *mem, size_t block_size, int nb_blocks)
 /**************************************************************************/
 void *mem_alloc(struct memory_t*mem)
 {
+  //printf("allocating mem : old debut Liste : %d et new debut liste : ", mem->debutListe);
   Bloc *ptr;
   assert(mem->debutListe != NULL);
 
@@ -56,6 +58,7 @@ void *mem_alloc(struct memory_t*mem)
   mem->debutListe = mem->debutListe->suivant;
   memset(ptr, 0, mem->block_size);
 
+  //printf("%d\n", mem->debutListe);
   mem->nb_free--;
   return (void *)ptr;
 }
@@ -65,8 +68,11 @@ void *mem_alloc(struct memory_t*mem)
 /**************************************************************************/
 void mem_free(struct memory_t* mem, void *ptr)
 {
+  //printf("freeing mem : old debut Liste : %d et new debut liste : ", mem->debutListe);
+  //fflush(stdout);
   Bloc *pBloc = (Bloc*)ptr;
   pBloc->suivant = mem->debutListe;
   mem->debutListe = pBloc;
+  //printf("%d\n", mem->debutListe);
   mem->nb_free++;
 }
