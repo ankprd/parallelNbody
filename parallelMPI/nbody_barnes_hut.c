@@ -27,7 +27,7 @@ int nparticles=10;      /* number of particles */
 float T_FINAL=1.0;     /* simulation end time */
 
 particle_t*particles;
-particle_t*newParticles;
+particle_t* newParticles;
 
 node_t *root;
 
@@ -247,11 +247,11 @@ void run_simulation(int rank, int nbT) {
     t += dt;
 
     /*constructs tree*/
-    init();
+    /*init();
     printf("init of node root worked in rank %d\n", rank);
     insert_all_particles(nparticles, particles, root);
     printf("insertion of all parts worked in %d\n", rank);
-    fflush(stdout);
+    fflush(stdout);*/
 
     /* Calculates forces applied on particles from fPart to lPart*/
     int unused = compute_force_in_node(root, fPart, lPart, 0);
@@ -289,8 +289,15 @@ void run_simulation(int rank, int nbT) {
     max_acc = newMaxAcc;
     max_speed = newMaxSpeed;
 
+    node_t* new_root = malloc(sizeof(node_t));
+    init_node(new_root, NULL, XMIN, XMAX, YMIN, YMAX);
+
+    /* then move all particles and return statistics */
+    insert_all_particles(nparticles, particles, new_root);
+
     free_node(root);
     free(root);
+    root = new_root;
 
     /* Adjust dt based on maximum speed and acceleration--this
        simple rule tries to insure that no velocity will change
@@ -328,11 +335,13 @@ int main(int argc, char**argv)
     T_FINAL = atof(argv[2]);
   }
 
+  init();
+
   /* Allocate global shared arrays for the particles data set. */
   particles = malloc(sizeof(particle_t)*nparticles);
   newParticles = malloc(sizeof(particle_t)*nparticles);
   all_init_particles(nparticles, particles);
-  //insert_all_particles(nparticles, particles, root);
+  insert_all_particles(nparticles, particles, root);
   //printf("init of all parts worked\n");
 
 if(rank == 0){
