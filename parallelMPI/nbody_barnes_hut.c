@@ -11,6 +11,7 @@
 #include <assert.h>
 #include <unistd.h>
 #include <mpi.h> 
+#include <string.h>
 
 #ifdef DISPLAY
 #include <X11/Xlib.h>
@@ -47,6 +48,14 @@ Display *theDisplay;  /* These three variables are required to open the */
 GC theGC;             /* particle plotting window.  They are externally */
 Window theMain;       /* declared in ui.h but are also required here.   */
 #endif
+
+void print_all_particles(FILE* f) {
+	int i;
+	for (i = 0; i<nparticles; i++) {
+		particle_t*p = &particles[i];
+		fprintf(f, "particle={pos=(%f,%f), vel=(%f,%f)}\n", p->x_pos, p->y_pos, p->x_vel, p->y_vel);
+	}
+}
 
 /* compute the force that a particle with position (x_pos, y_pos) and mass 'mass'
  * applies to particle p
@@ -173,7 +182,7 @@ void move_and_save_particle(particle_t*p, double step, int idP) {
      p->y_pos > YMAX) {
     p->mass = 0;//marks the particle as deleted
   } 
-  newParticles[idP] = *p;
+  memcpy(&newParticles[idP], p, sizeof(particle_t));
 }
 
 /* compute the new position of the particles in a node */
@@ -202,10 +211,13 @@ int move_and_save_particles_in_node(node_t*n, double step, int fPart, int lPart,
 }
 
 /* create a quad-tree from an array of particles */
-void insert_all_particles(int nparticles, particle_t*particles, node_t*root) {
+void insert_all_particles(int nparticles, particle_t*particles, node_t*Nroot, int rank) {
   int i;
   for(i=0; i<nparticles; i++) {
-    insert_particle(&particles[i], root);
+    if(particles[i].mass != 0){
+    printf("insertion of parts %d in rank %d\n", i, rank);
+    fflush(stdout);
+    insert_particle(&particles[i], Nroot);}
   }
 }
 
@@ -222,7 +234,7 @@ void run_simulation(int rank, int nbT) {
 
   double* rcvVal = (double*)malloc(sizeof(double) * nparticles * 5);
 	double* sndVal = (double*)malloc(sizeof(double) * nbPart * 5);
-  int* nbPPerTask = (int*)malloc(sizeof(int) * nbT + 1);
+  int* nbPPerTask = (int*)malloc(sizeof(int) * (nbT + 1));
 
   if (rcvVal == 0 || sndVal == 0 || nbPPerTask == 0) {
 		printf("Malloc failed in process %d\n", rank);
@@ -282,12 +294,12 @@ void run_simulation(int rank, int nbT) {
 
     double newMaxSpeed, newMaxAcc;
     //printf("At time %lf Process %d before reduce : max_acc -> %lf max_speed -> %lf\n", t, rank, max_acc, max_speed);	
-		MPI_Allreduce(&max_speed, &newMaxSpeed, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+		//MPI_Allreduce(&max_speed, &newMaxSpeed, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 		//printf("At time %lf after first reduce, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
-		MPI_Allreduce(&max_acc, &newMaxAcc, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+		//MPI_Allreduce(&max_acc, &newMaxAcc, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
-    max_acc = newMaxAcc;
-    max_speed = newMaxSpeed;
+    //max_acc = newMaxAcc;
+    //max_speed = newMaxSpeed;
 
     node_t* new_root = malloc(sizeof(node_t));
     init_node(new_root, NULL, XMIN, XMAX, YMIN, YMAX);
@@ -295,15 +307,15 @@ void run_simulation(int rank, int nbT) {
     fflush(stdout);
 
     /* then move all particles and return statistics */
-    insert_all_particles(nparticles, particles, new_root);
+    insert_all_particles(nparticles, particles, new_root, rank);
     printf("insertion of all parts worked in %d\n", rank);
     fflush(stdout);
 
     free_node(root);
-    printf("freenod ok in rank %d\n", rank);
+    //printf("freenod ok in rank %d\n", rank);
     fflush(stdout);
     free(root);
-    printf("free root ok in rank %d\n", rank);
+    //printf("free root ok in rank %d\n", rank);
     fflush(stdout);
     root = new_root;
 
@@ -349,8 +361,8 @@ int main(int argc, char**argv)
   particles = malloc(sizeof(particle_t)*nparticles);
   newParticles = malloc(sizeof(particle_t)*nparticles);
   all_init_particles(nparticles, particles);
-  insert_all_particles(nparticles, particles, root);
-  //printf("init of all parts worked\n");
+  insert_all_particles(nparticles, particles, root, rank);
+  printf("init of all parts worked in main\n");
 
 if(rank == 0){
   /* Initialize thread data structures */
@@ -371,9 +383,9 @@ if(rank == 0){
 
 #ifdef DUMP_RESULT
   FILE* f_out = fopen("particles.log", "w");
-  assert(f_out);
-  print_particles(f_out, root);
-  fclose(f_out);
+	assert(f_out);
+	print_all_particles(f_out);
+	fclose(f_out);
 #endif
 
   printf("-----------------------------\n");
@@ -383,16 +395,15 @@ if(rank == 0){
   printf("Simulation took %lf s to complete\n", duration);
 
 #ifdef DISPLAY
-  node_t *n = root;
-  clear_display();
-  draw_node(n);
-  flush_display();
+    clear_display();
+		draw_all_particles();
+		flush_display();
 
-  printf("Hit return to close the window.");
+		printf("Hit return to close the window.");
 
-  getchar();
-  /* Close the X window used to display the particles */
-  XCloseDisplay(theDisplay);
+		getchar();
+		/* Close the X window used to display the particles */
+		XCloseDisplay(theDisplay);
 #endif
   }
 

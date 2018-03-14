@@ -109,10 +109,10 @@ int get_quadrant(particle_t* particle, node_t*node) {
   double y_max = node->y_max;
   double y_center = y_min+(y_max-y_min)/2;
 
-  assert(particle->x_pos>=node->x_min);
+  /*assert(particle->x_pos>=node->x_min);
   assert(particle->x_pos<=node->x_max);
   assert(particle->y_pos>=node->y_min);
-  assert(particle->y_pos<=node->y_max);
+  assert(particle->y_pos<=node->y_max);*/
 
   if(particle->x_pos <= x_center) {
     if(particle->y_pos <= y_center) {
