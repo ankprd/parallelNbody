@@ -109,10 +109,10 @@ int get_quadrant(particle_t* particle, node_t*node) {
   double y_max = node->y_max;
   double y_center = y_min+(y_max-y_min)/2;
 
-  /*assert(particle->x_pos>=node->x_min);
+  assert(particle->x_pos>=node->x_min);
   assert(particle->x_pos<=node->x_max);
   assert(particle->y_pos>=node->y_min);
-  assert(particle->y_pos<=node->y_max);*/
+  assert(particle->y_pos<=node->y_max);
 
   if(particle->x_pos <= x_center) {
     if(particle->y_pos <= y_center) {
@@ -153,6 +153,7 @@ void insert_particle(particle_t* particle, node_t*node) {
 
     particle->node = node;
     assert(node->children == NULL);
+    //printf("pas de new node, insert direct\n");
     return;
   } else {
     /* There's already a particle */
@@ -181,15 +182,18 @@ void insert_particle(particle_t* particle, node_t*node) {
       int quadrant = get_quadrant(ptr, node);
       node->particle = NULL;
       ptr->node = NULL;
+      //printf("pas d'enfants, donc 4 new nodes et on insere la part qui etqit la dans les enfants dans quad %d\n", quadrant);
 
       insert_particle(ptr, &node->children[quadrant]);
     }
+    //printf("on insere sur les enfants\n");
 
     /* insert the particle to one of the children */
     int quadrant = get_quadrant(particle, node);
     node->n_particles++;
 
     //assert(particle->node == NULL);
+    //printf("on insere sur les enfantsdans quad %d\n", quadrant);
     insert_particle(particle, &node->children[quadrant]);
 
     /* update the mass and center of the node */
@@ -229,6 +233,7 @@ void all_init_particles(int num_particles, particle_t *particles)
     particle->y_vel = particle->x_pos;
 #else
     particle->x_pos = i*2.0/nparticles - 1.0;
+    //particles->x_pos = 0.1 * i;
     particle->y_pos = 0.0;
     particle->x_vel = 0.0;
     particle->y_vel = particle->x_pos;

@@ -21,24 +21,45 @@
 #include "ui.h"
 #include "nbody.h"
 #include "nbody_tools.h"
+#include "nbody_alloc.h"
 
 FILE* f_out=NULL;
 
 int nparticles=10;      /* number of particles */
 float T_FINAL=1.0;     /* simulation end time */
+int nbDeletedParts;
 
 particle_t*particles;
 particle_t* newParticles;
 
 node_t *root;
 
+extern struct memory_t mem_node;
+
 
 double sum_speed_sq = 0;
 double max_acc = 0;
 double max_speed = 0;
 
+void printDebug(int val, int rank){
+  int i;
+  for (i = 0; i<nparticles; i++) {
+		particle_t*p;
+    if(val)
+      p = &particles[i];
+    else
+      p = &newParticles[i];
+    if(val)
+      printf("apres send ");
+    else
+      printf("avant send ");
+		printf("Rank : %d : particle={pos=(%f,%f), vel=(%f,%f) et mass %f}\n", rank, p->x_pos, p->y_pos, p->x_vel, p->y_vel, p->mass);
+	}
+}
+
 void init() {
-  init_alloc(4*nparticles);
+  init_alloc(100*nparticles);//lot of memory until we fix allGatherv
+  //printf("In init  : %d\n", mem_node.nb_free);
   root = malloc(sizeof(node_t));
   init_node(root, NULL, XMIN, XMAX, YMIN, YMAX);
 }
@@ -181,6 +202,7 @@ void move_and_save_particle(particle_t*p, double step, int idP) {
      p->y_pos < YMIN ||
      p->y_pos > YMAX) {
     p->mass = 0;//marks the particle as deleted
+    nbDeletedParts++;
   } 
   memcpy(&newParticles[idP], p, sizeof(particle_t));
 }
@@ -214,9 +236,9 @@ int move_and_save_particles_in_node(node_t*n, double step, int fPart, int lPart,
 void insert_all_particles(int nparticles, particle_t*particles, node_t*Nroot, int rank) {
   int i;
   for(i=0; i<nparticles; i++) {
-    if(particles[i].mass != 0){
-    printf("insertion of parts %d in rank %d\n", i, rank);
-    fflush(stdout);
+    if(particles[i].mass >= 0.5){
+    //printf("Rank : %d insertion of parts %d : %d\n ", rank, i , mem_node.nb_free);
+    //fflush(stdout);
     insert_particle(&particles[i], Nroot);}
   }
 }
@@ -231,10 +253,13 @@ void run_simulation(int rank, int nbT) {
   if(rank >= nparticles % nbT)
     fPart += (nparticles % nbT);
   int lPart = fPart + nbPart;
+  //printf("pour rank : %d, fP : %d, lP : %d\n", rank, fPart, lPart);
 
   double* rcvVal = (double*)malloc(sizeof(double) * nparticles * 5);
 	double* sndVal = (double*)malloc(sizeof(double) * nbPart * 5);
-  int* nbPPerTask = (int*)malloc(sizeof(int) * (nbT + 1));
+  int* nbPPerTask = (int*)malloc(sizeof(int) * nbT);
+  int* offsetTask = (int*)malloc(sizeof(int) * nbT);
+  offsetTask[0] = 0;
 
   if (rcvVal == 0 || sndVal == 0 || nbPPerTask == 0) {
 		printf("Malloc failed in process %d\n", rank);
@@ -244,17 +269,31 @@ void run_simulation(int rank, int nbT) {
   int curT;
   nbPPerTask[0] = 0;
   for(curT = 0; curT < nbT; curT++){
-    nbPPerTask[curT + 1] = nparticles / nbT;
+    nbPPerTask[curT] = nparticles / nbT;
     if(curT < nparticles % nbT)
-      nbPPerTask[curT + 1]++;
-    nbPPerTask[curT + 1] *= 5;//car on va s'en servir dans le allGatherV et 5 car on envoie la masse aussi mtn
+      nbPPerTask[curT]++;
+    nbPPerTask[curT] *= 5;//car on va s'en servir dans le allGatherV et 5 car on envoie la masse aussi mtn
+    if(curT > 0)
+      offsetTask[curT] = offsetTask[curT - 1] + nbPPerTask[curT - 1];
   }
+  /*if(rank == 0){
+    for(curT = 0; curT < nbT; curT++)
+      printf("%d ", nbPPerTask[curT]);
+  }
+  printf("\n");
+  if(rank == 0){
+    for(curT = 0; curT < nbT; curT++)
+      printf("%d ", offsetTask[curT]);
+  }
+  printf("\n");*/
   /*printf("Pour nbT = %d et nbparts = %d in process %d\n", nbT, nparticles, rank);
   for(curT = 0; curT <= nbT; curT++)
     printf("in rank %d curT : %d -> %d\n", rank, curT, nbPPerTask[curT + 1]);
   printf("\n");*/
 
   while (t < T_FINAL && nparticles>0) {
+    //printf("Rank : %d Begin iteration : %d\n", rank, mem_node.nb_free);
+    nbDeletedParts = 0;
     /* Update time. */
     t += dt;
 
@@ -271,6 +310,8 @@ void run_simulation(int rank, int nbT) {
     /* changes their pos/velocity accordingly and saves them in newParticles at pos [fpart, lpart[ */
     unused = move_and_save_particles_in_node(root, dt, fPart, lPart, 0);
 
+    //printDebug(0, rank);
+
     //TODO COMMUNICATION
     int i, id;
 		for (i = fPart; i < lPart; i++) {
@@ -281,7 +322,7 @@ void run_simulation(int rank, int nbT) {
 			sndVal[5 * id + 3] = newParticles[i].y_vel;
       sndVal[5 * id + 4] = newParticles[i].mass;
 		}
-    MPI_Allgatherv(sndVal, nbPart * 5, MPI_DOUBLE, rcvVal, nbPPerTask + 1, nbPPerTask, MPI_DOUBLE, MPI_COMM_WORLD);
+    MPI_Allgatherv(sndVal, nbPart * 5, MPI_DOUBLE, rcvVal, nbPPerTask, offsetTask, MPI_DOUBLE, MPI_COMM_WORLD);
 
     for (i = 0; i < nparticles; i++) {
 			particles[i].x_pos = rcvVal[5 * i];
@@ -292,32 +333,43 @@ void run_simulation(int rank, int nbT) {
 			//printf("Process %d updated particle %d\n", rank, i);
 		}
 
-    double newMaxSpeed, newMaxAcc;
-    //printf("At time %lf Process %d before reduce : max_acc -> %lf max_speed -> %lf\n", t, rank, max_acc, max_speed);	
-		//MPI_Allreduce(&max_speed, &newMaxSpeed, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-		//printf("At time %lf after first reduce, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
-		//MPI_Allreduce(&max_acc, &newMaxAcc, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    //printDebug(1, rank);
+    //printf("\n\n\n");
 
-    //max_acc = newMaxAcc;
-    //max_speed = newMaxSpeed;
+    double newMaxSpeed, newMaxAcc;
+    int totPartsDel = 0;
+    //printf("At time %lf Process %d before reduce : max_acc -> %lf max_speed -> %lf\n", t, rank, max_acc, max_speed);	
+		MPI_Allreduce(&max_speed, &newMaxSpeed, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+		//printf("At time %lf after first reduce, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
+		MPI_Allreduce(&max_acc, &newMaxAcc, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+
+    MPI_Allreduce(&nbDeletedParts, &totPartsDel, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    max_acc = newMaxAcc;
+    max_speed = newMaxSpeed;
 
     node_t* new_root = malloc(sizeof(node_t));
     init_node(new_root, NULL, XMIN, XMAX, YMIN, YMAX);
-    printf("init of node root worked in rank %d\n", rank);
-    fflush(stdout);
+    //printf("init of node root worked in rank %d\n", rank);
+    //fflush(stdout);
+    //printf("Rank : %d after declaration of new root : %d\n", rank, mem_node.nb_free);
 
     /* then move all particles and return statistics */
     insert_all_particles(nparticles, particles, new_root, rank);
-    printf("insertion of all parts worked in %d\n", rank);
-    fflush(stdout);
+    //printf("insertion of all parts worked in %d\n", rank);
+    //fflush(stdout);
 
+    //printf("Rank : %d Before free : %d\n", rank, mem_node.nb_free);
     free_node(root);
-    //printf("freenod ok in rank %d\n", rank);
-    fflush(stdout);
     free(root);
-    //printf("free root ok in rank %d\n", rank);
-    fflush(stdout);
+    //printf("Rank : %d after free : %d\n", rank, mem_node.nb_free);
     root = new_root;
+
+    if(totPartsDel > 0)
+      printf("Nb parts deleted : %d => newNbParts = %d\n", totPartsDel, nparticles);
+    nparticles -= totPartsDel;
 
     /* Adjust dt based on maximum speed and acceleration--this
        simple rule tries to insure that no velocity will change
@@ -361,8 +413,11 @@ int main(int argc, char**argv)
   particles = malloc(sizeof(particle_t)*nparticles);
   newParticles = malloc(sizeof(particle_t)*nparticles);
   all_init_particles(nparticles, particles);
+  //printf("Rank : %d after all init : %d\n", rank, mem_node.nb_free);
   insert_all_particles(nparticles, particles, root, rank);
-  printf("init of all parts worked in main\n");
+  //printf("Rank : %d after insert all : %d\n", rank, mem_node.nb_free);
+  //printDebug();
+  //printf("init of all parts worked in main\n");
 
 if(rank == 0){
   /* Initialize thread data structures */

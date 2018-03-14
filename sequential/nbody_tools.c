@@ -229,6 +229,7 @@ void all_init_particles(int num_particles, particle_t *particles)
     particle->y_vel = particle->x_pos;
 #else
     particle->x_pos = i*2.0/nparticles - 1.0;
+    //particle->x_pos = 0.001 * i;
     particle->y_pos = 0.0;
     particle->x_vel = 0.0;
     particle->y_vel = particle->x_pos;

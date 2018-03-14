@@ -22,7 +22,7 @@
 
 FILE* f_out=NULL;
 
-int nparticles=10;      /* number of particles */
+int nparticles=100;      /* number of particles */
 float T_FINAL=1.0;     /* simulation end time */
 
 particle_t*particles;
