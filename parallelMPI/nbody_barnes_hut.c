@@ -58,7 +58,7 @@ void printDebug(int val, int rank){
 }
 
 void init() {
-  init_alloc(100*nparticles);//lot of memory until we fix allGatherv
+  init_alloc(4*nparticles);//lot of memory until we fix allGatherv
   //printf("In init  : %d\n", mem_node.nb_free);
   root = malloc(sizeof(node_t));
   init_node(root, NULL, XMIN, XMAX, YMIN, YMAX);
