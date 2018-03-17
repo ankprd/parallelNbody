@@ -1,15 +1,17 @@
-CC	= gcc
+/usr/local/cuda/bin/nvcc -I. -o nbBF nbody_brute_force.cu
+
+CC	= g++
 CFLAGS	= -O0 -g -Wall
 LDFLAGS = -lm -lpthread -lX11 -fopenmp
 VERBOSE	=
-TARGET	= nbody_brute_force nbody_barnes_hut
-OBJS	= ui.o xstuff.o nbody_tools.o nbody_alloc.o
+TARGET	= nbody_brute_force
+OBJS	= nbody_tools.o nbody_alloc.o
 
 #DISPLAY = -DDISPLAY
 DISPLAY =
 
-DUMP = -DDUMP_RESULT
-#DUMP =
+#DUMP = -DDUMP_RESULT
+DUMP =
 
 all: $(TARGET)
 
@@ -19,7 +21,7 @@ nbody_brute_force: nbody_brute_force.o $(OBJS)
 nbody_barnes_hut: nbody_barnes_hut.o $(OBJS)
 	$(CC) $(VERBOSE) -o $@ $< $(OBJS)  $(LDFLAGS)
 
-%.o: %.c
+%.o: %.cpp
 	$(CC) $(CFLAGS) -c $< $(VERBOSE) $(DISPLAY) $(DUMP)
 clean:
 	rm -f *.o $(TARGET)

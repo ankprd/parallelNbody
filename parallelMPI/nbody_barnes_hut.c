@@ -256,7 +256,7 @@ void run_simulation(int rank, int nbT) {
   //printf("pour rank : %d, fP : %d, lP : %d\n", rank, fPart, lPart);
 
   double* rcvVal = (double*)malloc(sizeof(double) * nparticles * 5);
-	double* sndVal = (double*)malloc(sizeof(double) * nbPart * 5);
+  double* sndVal = (double*)malloc(sizeof(double) * nbPart * 5);
   int* nbPPerTask = (int*)malloc(sizeof(int) * nbT);
   int* offsetTask = (int*)malloc(sizeof(int) * nbT);
   offsetTask[0] = 0;
@@ -290,6 +290,7 @@ void run_simulation(int rank, int nbT) {
   for(curT = 0; curT <= nbT; curT++)
     printf("in rank %d curT : %d -> %d\n", rank, curT, nbPPerTask[curT + 1]);
   printf("\n");*/
+  int nbS = 0;
 
   while (t < T_FINAL && nparticles>0) {
     //printf("Rank : %d Begin iteration : %d\n", rank, mem_node.nb_free);
@@ -312,7 +313,6 @@ void run_simulation(int rank, int nbT) {
 
     //printDebug(0, rank);
 
-    //TODO COMMUNICATION
     int i, id;
 		for (i = fPart; i < lPart; i++) {
 			id = i - fPart;
