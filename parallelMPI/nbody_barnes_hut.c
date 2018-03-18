@@ -43,6 +43,8 @@ double sum_speed_sq = 0;
 double max_acc = 0;
 double max_speed = 0;
 
+double timing[2];
+
 void printDebug(int val, int rank){
   int i;
   for (i = 0; i<nparticles; i++) {
@@ -245,7 +247,8 @@ void insert_all_particles(int nparticles, particle_t*particles, node_t*Nroot, in
   }
 }
 
-void run_simulation(int rank, int nbT) {
+int run_simulation(int rank, int nbT) {
+  int idIter = 0;
   double t = 0.0, dt = 0.01;
   int nbpartChanged = 1;
 
@@ -261,8 +264,10 @@ void run_simulation(int rank, int nbT) {
 
   if (rcvVal == 0 || sndVal == 0 || nbPPerTask == 0) {
 		printf("Malloc failed in process %d\n", rank);
-		return;
+		return -1;
   }
+  double t1Calc, t2Calc; 
+  t1Calc = MPI_Wtime(); 
 
   /*if(rank == 0){
     for(curT = 0; curT < nbT; curT++)
@@ -293,7 +298,8 @@ void run_simulation(int rank, int nbT) {
           offsetTask[curT] = offsetTask[curT - 1] + nbPPerTask[curT - 1];
       }
 
-      //printf("pour rank : %d, fPO : %d, lPO : %d, nbPO %d \n", rank, offsetTask[rank], nbPPerTask[rank], offsetTask[rank] + nbPPerTask[rank]);
+      /*printf("pour rank : %d, fPO : %d, lPO : %d, nbPO %d \n", rank, offsetTask[rank], offsetTask[rank] + nbPPerTask[rank], nbPPerTask[rank]);
+      fflush(stdout);*/
       fPart = offsetTask[rank] / 5;
       nbPart = nbPPerTask[rank] / 5;
       lPart = fPart + nbPart;
@@ -312,6 +318,8 @@ void run_simulation(int rank, int nbT) {
     unused = move_and_save_particles_in_node(root, dt, fPart, lPart, 0);
 
     //printDebug(0, rank);
+    t2Calc = MPI_Wtime(); 
+    timing[0] += t2Calc - t1Calc;
 
     int i, id;
 		for (i = fPart; i < lPart; i++) {
@@ -345,7 +353,9 @@ void run_simulation(int rank, int nbT) {
 
     MPI_Allreduce(&nbDeletedParts, &totPartsDel, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 
+    t1Calc = MPI_Wtime(); 
     //MPI_Barrier(MPI_COMM_WORLD);
+    timing[1] += t1Calc - t2Calc;
 
     max_acc = newMaxAcc;
     max_speed = newMaxSpeed;
@@ -387,8 +397,17 @@ void run_simulation(int rank, int nbT) {
     flush_display();
     }
 #endif
+  idIter++;
   }
+
+  free_node(root);
   free(root);
+  free(nbPPerTask);
+  free(offsetTask);
+  free(rcvVal);
+  free(sndVal);
+
+  return idIter;
 }
 
 /*
@@ -411,6 +430,8 @@ int main(int argc, char**argv)
 
   init();
 
+  int nbIter;
+
   /* Allocate global shared arrays for the particles data set. */
   particles = malloc(sizeof(particle_t)*nparticles);
   newParticles = malloc(sizeof(particle_t)*nparticles);
@@ -432,7 +453,7 @@ if(rank == 0){
   gettimeofday(&t1, NULL);
 
   /* Main thread starts simulation ... */
-  run_simulation(rank, nbTasks);
+  nbIter = run_simulation(rank, nbTasks);
 
   gettimeofday(&t2, NULL);
 
@@ -465,7 +486,17 @@ if(rank == 0){
   }
 
   else
-    run_simulation(rank, nbTasks);
+    nbIter = run_simulation(rank, nbTasks);
+
+  char nomF[4] = "i.t";
+  nomF[0] = rank + '0';
+  //printf("%c", rank - '0');
+  FILE* f_out3 = fopen(nomF, "w");
+  fprintf(f_out3, "%f %f\n", timing[0] / (double) nbIter, timing[1] / (double) nbIter);
+	fclose(f_out3);
+
+  free(particles);
+  free(newParticles);
 
   MPI_Finalize(); 
   return 0;

@@ -23,7 +23,7 @@
 FILE* f_out=NULL;
 
 int nparticles=100;      /* number of particles */
-float T_FINAL=100;     /* simulation end time */
+float T_FINAL=1.0;     /* simulation end time */
 
 particle_t*particles;
 
@@ -34,8 +34,10 @@ double sum_speed_sq = 0;
 double max_acc = 0;
 double max_speed = 0;
 
+double timing;
+
 void init() {
-  init_alloc(100*nparticles);
+  init_alloc(4*nparticles);
   root = malloc(sizeof(node_t));
   init_node(root, NULL, XMIN, XMAX, YMIN, YMAX);
 }
@@ -205,10 +207,13 @@ void all_move_particles(double step)
   root = new_root;
 }
 
-void run_simulation() {
+int run_simulation() {
   double t = 0.0, dt = 0.01;
+  int idIter = 0;
+  struct timeval t1, t2;
 
   while (t < T_FINAL && nparticles>0) {
+    gettimeofday(&t1, NULL);
     /* Update time. */
     t += dt;
     /* Move particles with the current and compute rms velocity. */
@@ -227,7 +232,11 @@ void run_simulation() {
     draw_node(n);
     flush_display();
 #endif
+  gettimeofday(&t2, NULL);
+  timing += (t2.tv_sec -t1.tv_sec)+((t2.tv_usec-t1.tv_usec)/1e6);
+  idIter++;
   }
+  return idIter;
 }
 
 /* create a quad-tree from an array of particles */
@@ -267,7 +276,7 @@ int main(int argc, char**argv)
   gettimeofday(&t1, NULL);
 
   /* Main thread starts simulation ... */
-  run_simulation();
+  int nbIter = run_simulation();
 
   gettimeofday(&t2, NULL);
 
@@ -298,6 +307,8 @@ int main(int argc, char**argv)
   /* Close the X window used to display the particles */
   XCloseDisplay(theDisplay);
 #endif
-
+  FILE* f_out3 = fopen("timing.log", "w");
+  fprintf(f_out3, "%f\n", timing / (double) nbIter);
+  fclose(f_out3);
   return 0;
 }
