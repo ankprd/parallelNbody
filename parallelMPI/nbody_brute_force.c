@@ -32,8 +32,6 @@ double sum_speed_sq = 0;
 double max_acc = 0;
 double max_speed = 0;
 
-MPI_Comm ActiveTasks;
-
 double max(double a, double b)
 {
 	if (a < b)
@@ -58,6 +56,7 @@ double min(double a, double b)
 		return b;
 	}
 }
+
 void init() {
 	/* Nothing to do */
 }
@@ -118,7 +117,7 @@ void all_move_particles(double step, int firstPart, int lastPart)
 	/* First calculate force for particles. */
 	int i;
 	int n;
-	MPI_Comm_rank(ActiveTasks, &n);
+	MPI_Comm_rank(MPI_COMM_WORLD, &n);
 	#pragma omp parallel shared(particles) reduction(max:max_acc,max_speed) reduction(+:sum_speed_sq)
 	{
 		#pragma omp for schedule(static)
@@ -174,111 +173,110 @@ void debugPrint(int process, double time) {
 void run_simulation(int rank, int nbTasks) {
 	//int nbTasks;
 	//MPI_Comm_size(MPI_COMM_WORLD, &nbTasks);
-	//printf("nbTasks : %d\n\n", nbTasks);
 
 	int partsPerTask = nparticles / nbTasks; // number of particules per MPI task
-      int *startPosTask = (int*)malloc(sizeof(int) * nbTasks);
-      int *sizeTask = (int*)malloc(sizeof(int) * nbTasks);
-      
-      int i;
-      for (i = 0; i < nbTasks; i++) {
-         startPosTask[i] = (partsPerTask * i + min(nparticles % nbTasks, i)) * 4;
-         sizeTask[i] = (partsPerTask + min(nparticles % nbTasks, i + 1) - min(nparticles % nbTasks, i)) * 4;
-      }
-      
-   
+	int *startPosTask = (int*)malloc(sizeof(int) * nbTasks);
+	int *sizeTask = (int*)malloc(sizeof(int) * nbTasks);
+
+	int i;
+	for (i = 0; i < nbTasks; i++) {
+		startPosTask[i] = (partsPerTask * i + min(nparticles % nbTasks, i)) * 4;
+		sizeTask[i] = (partsPerTask + min(nparticles % nbTasks, i + 1) - min(nparticles % nbTasks, i)) * 4;
+	}
+
+
 	int firstPart = startPosTask[rank] / 4;
-	int lastPart = sizeTask[rank] / 4;
+	int lastPart = firstPart + sizeTask[rank] / 4;
 
-		double* rcvVal = (double*)malloc(sizeof(double) * nparticles * 4);
-		double* sndVal = (double*)malloc(sizeof(double) * (lastPart - firstPart) * 4);
-		//printf("task %d from %d to %d\n", rank, firstPart, lastPart - 1);
-      
-		double newMaxSpeed, newMaxAcc;
+	double* rcvVal = (double*)malloc(sizeof(double) * nparticles * 4);
+	double* sndVal = (double*)malloc(sizeof(double) * (lastPart - firstPart) * 4);
+	printf("task %d from %d to %d\n", rank, firstPart, lastPart - 1);
+	if (rcvVal == 0 || sndVal == 0) {
+		printf("Malloc failed in process %d\n", rank);
+		return;
+	}
 
-		double t = 0.0, dt = 0.01;
-		//int idIter = 0;
-		while (t < T_FINAL && nparticles>0) {
-			//printf("\n\n\nTime : %lf and process %d\n", t, rank);
-			/*if(idIter < 2){
-			debugPrint(rank, t);
-			//printf("IDiTER : % d, rank %d\n", idIter, rank);
-			}*/
-			//printf("in process %d, at time %lf, npart %d\n", rank, t, nparticles);
-			/* Update time. */
-			t += dt;
-			/* Move particles with the current and compute rms velocity. */
-			all_move_particles(dt, firstPart, lastPart);
+	double newMaxSpeed, newMaxAcc;
 
-			/*if(idIter < 2){
-			debugPrint(rank, t + 1);
-			//printf("IDiTER : % d, rank %d\n", idIter, rank);
-			}
-			idIter++;*/
-			//printf("At time %lf, Process %d finished moving particles from %d to %d \n", t, rank, firstPart, lastPart - 1);
-			//MPI_Barrier(MPI_COMM_WORLD);
-			//Broadcast results -> new parts pos and speed -> envoyer un tableau de 4 * nbParts concernees qui contient pos et vel a la suite
-			if (rcvVal == 0 || sndVal == 0) {
-				printf("Malloc failed in process %d\n", rank);
-				return;
-			}
-			//printf("At time %lf, Process %d allocated %d space\n", t, rank, partsPerTask);
-			int i, id;
+	double t = 0.0, dt = 0.01;
+	//int idIter = 0;
+	while (t < T_FINAL && nparticles>0) {
+		//printf("\n\n\nTime : %lf and process %d\n", t, rank);
+		/*if(idIter < 2){
+		debugPrint(rank, t);
+		//printf("IDiTER : % d, rank %d\n", idIter, rank);
+		}*/
+		//printf("in process %d, at time %lf, npart %d\n", rank, t, nparticles);
+		/* Update time. */
+		t += dt;
+		/* Move particles with the current and compute rms velocity. */
+		all_move_particles(dt, firstPart, lastPart);
+
+		/*if(idIter < 2){
+		debugPrint(rank, t + 1);
+		//printf("IDiTER : % d, rank %d\n", idIter, rank);
+		}
+		idIter++;*/
+		//printf("At time %lf, Process %d finished moving particles from %d to %d \n", t, rank, firstPart, lastPart - 1);
+		//MPI_Barrier(MPI_COMM_WORLD);
+		//Broadcast results -> new parts pos and speed -> envoyer un tableau de 4 * nbParts concernees qui contient pos et vel a la suite
+		//printf("At time %lf, Process %d allocated %d space\n", t, rank, partsPerTask);
+		int i, id;
 #pragma omp parallel private(id)
-			{
+		{
 #pragma omp for
-				for (i = firstPart; i < lastPart; i++) {
-					id = i - firstPart;
-					sndVal[4 * id] = particles[i].x_pos;
-					sndVal[4 * id + 1] = particles[i].y_pos;
-					sndVal[4 * id + 2] = particles[i].x_vel;
-					sndVal[4 * id + 3] = particles[i].y_vel;
-				}
-			}
-			//printf("before gathering, val in task %d is %f\n", rank, rcvVal[0]);
-			MPI_Allgatherv(sndVal, partsPerTask * 4, MPI_DOUBLE, rcvVal, sizeTask, startPosTask, MPI_DOUBLE, MPI_COMM_WORLD);
-			/* is equivalent to
-			MPI_Gather( sndVal, 4 * partsPerTask, MPI_DOUBLE,  rcvVal, 4 * partsPerTask, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-			MPI_Bcast( rcvVal, 4 * nparticles, MPI_DOUBLE, 0, MPI_COMM_WORLD);*/
-			//printf("after broadcasting, val in %d", rank);
-			//printf(" is %f\n", rcvVal[0]);
-#pragma omp parallel
-			{
-#pragma omp for
-				for (i = 0; i < nparticles; i++) {
-					particles[i].x_pos = rcvVal[4 * i];
-					particles[i].y_pos = rcvVal[4 * i + 1];
-					particles[i].x_vel = rcvVal[4 * i + 2];
-					particles[i].y_vel = rcvVal[4 * i + 3];
-					//printf("Process %d updated particle %d\n", rank, i);
-				}
-			}
-			//printf("At time %lf after broadcast, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
-
-			//printf("At time %lf Process %d before reduce : max_acc -> %lf max_speed -> %lf\n", t, rank, max_acc, max_speed);	
-			MPI_Allreduce(&max_speed, &newMaxSpeed, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-			//printf("At time %lf after first reduce, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
-			MPI_Allreduce(&max_acc, &newMaxAcc, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-			max_acc = newMaxAcc;
-			max_speed = newMaxSpeed;
-			//printf("At time %lf Process %d finished reduce : max_acc -> %lf max_speed -> %lf\n", t, rank, max_acc, max_speed);	
-			//printf("At time %lf after all reduce, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
-
-			/* Adjust dt based on maximum speed and acceleration--this
-			simple rule tries to insure that no velocity will change
-			by more than 10% */
-
-			dt = 0.1*max_speed / max_acc;
-
-			if (rank == 0) {
-				/* Plot the movement of the particle */
-#if DISPLAY
-				clear_display();
-				draw_all_particles();
-				flush_display();
-#endif
+			for (i = firstPart; i < lastPart; i++) {
+				id = i - firstPart;
+				sndVal[4 * id] = particles[i].x_pos;
+				sndVal[4 * id + 1] = particles[i].y_pos;
+				sndVal[4 * id + 2] = particles[i].x_vel;
+				sndVal[4 * id + 3] = particles[i].y_vel;
 			}
 		}
+		//printf("before gathering, val in task %d is %f\n", rank, rcvVal[0]);
+		MPI_Allgatherv(sndVal, sizeTask[rank], MPI_DOUBLE, rcvVal, sizeTask, startPosTask, MPI_DOUBLE, MPI_COMM_WORLD);
+		/* is equivalent to
+		MPI_Gather( sndVal, 4 * partsPerTask, MPI_DOUBLE,  rcvVal, 4 * partsPerTask, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+		MPI_Bcast( rcvVal, 4 * nparticles, MPI_DOUBLE, 0, MPI_COMM_WORLD);*/
+		//printf("after broadcasting, val in %d", rank);
+		//printf(" is %f\n", rcvVal[0]);
+#pragma omp parallel
+		{
+#pragma omp for
+			for (i = 0; i < nparticles; i++) {
+				particles[i].x_pos = rcvVal[4 * i];
+				particles[i].y_pos = rcvVal[4 * i + 1];
+				particles[i].x_vel = rcvVal[4 * i + 2];
+				particles[i].y_vel = rcvVal[4 * i + 3];
+				//printf("Process %d updated particle %d\n", rank, i);
+			}
+		}
+		//printf("At time %lf after broadcast, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
+
+		//printf("At time %lf Process %d before reduce : max_acc -> %lf max_speed -> %lf\n", t, rank, max_acc, max_speed);	
+		MPI_Allreduce(&max_speed, &newMaxSpeed, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+		//printf("At time %lf after first reduce, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
+		MPI_Allreduce(&max_acc, &newMaxAcc, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+		max_acc = newMaxAcc;
+		max_speed = newMaxSpeed;
+		//printf("At time %lf Process %d finished reduce : max_acc -> %lf max_speed -> %lf\n", t, rank, max_acc, max_speed);	
+		//printf("At time %lf after all reduce, process %d, nparticles %d, nbT %d\n", t, rank, nparticles, nbTasks);
+
+		/* Adjust dt based on maximum speed and acceleration--this
+		simple rule tries to insure that no velocity will change
+		by more than 10% */
+
+		dt = 0.1*max_speed / max_acc;
+
+		if (rank == 0) {
+			/* Plot the movement of the particle */
+#if DISPLAY
+			clear_display();
+			draw_all_particles();
+			flush_display();
+#endif
+		}
+	}
 }
 
 /*
