@@ -23,6 +23,8 @@
 #include "nbody_tools.h"
 #include "nbody_alloc.h"
 
+#define DUMP_RESULT
+
 FILE* f_out=NULL;
 
 int nparticles=10;      /* number of particles */
@@ -58,8 +60,7 @@ void printDebug(int val, int rank){
 }
 
 void init() {
-  init_alloc(4*nparticles);//lot of memory until we fix allGatherv
-  //printf("In init  : %d\n", mem_node.nb_free);
+  init_alloc(4*nparticles);//may cause segfault : if particles get really close, the tree may get bigger than that
   root = malloc(sizeof(node_t));
   init_node(root, NULL, XMIN, XMAX, YMIN, YMAX);
 }
@@ -95,7 +96,7 @@ void compute_force(particle_t*p, double x_pos, double y_pos, double mass) {
   p->y_force += grav_base*y_sep;
 }
 
-/* compute the force that node n acts on particle p */ //AND MOVES IT
+/* compute the force that node n acts on particle p  -> unchanged from sequential*/
 void compute_force_on_particle(node_t* n, particle_t *p) {
   if(! n || n->n_particles==0) {
     return;
@@ -150,6 +151,7 @@ void compute_force_on_particle(node_t* n, particle_t *p) {
   }
 }
 
+/*calculates force on particle iff it is in [fPart, lPart[*/
 int compute_force_in_node(node_t *n, int fPart, int lPart, int idP) {
   if(!n) return 0;
 
@@ -245,37 +247,23 @@ void insert_all_particles(int nparticles, particle_t*particles, node_t*Nroot, in
 
 void run_simulation(int rank, int nbT) {
   double t = 0.0, dt = 0.01;
+  int nbpartChanged = 1;
 
-  int nbPart = nparticles / nbT;
-  if(rank < nparticles % nbT)
-    nbPart++;
-  int fPart = rank * nbPart;
-  if(rank >= nparticles % nbT)
-    fPart += (nparticles % nbT);
-  int lPart = fPart + nbPart;
-  //printf("pour rank : %d, fP : %d, lP : %d\n", rank, fPart, lPart);
-
-  double* rcvVal = (double*)malloc(sizeof(double) * nparticles * 5);
-  double* sndVal = (double*)malloc(sizeof(double) * nbPart * 5);
+  /*Tables used to send data between threads*/
   int* nbPPerTask = (int*)malloc(sizeof(int) * nbT);
   int* offsetTask = (int*)malloc(sizeof(int) * nbT);
   offsetTask[0] = 0;
+  int nbPart, fPart, lPart;
+  nbPart = nparticles / nbT + 1;
+
+  double* rcvVal = (double*)malloc(sizeof(double) * nparticles * 5);
+  double* sndVal = (double*)malloc(sizeof(double) * nbPart * 5);
 
   if (rcvVal == 0 || sndVal == 0 || nbPPerTask == 0) {
 		printf("Malloc failed in process %d\n", rank);
 		return;
   }
 
-  int curT;
-  nbPPerTask[0] = 0;
-  for(curT = 0; curT < nbT; curT++){
-    nbPPerTask[curT] = nparticles / nbT;
-    if(curT < nparticles % nbT)
-      nbPPerTask[curT]++;
-    nbPPerTask[curT] *= 5;//car on va s'en servir dans le allGatherV et 5 car on envoie la masse aussi mtn
-    if(curT > 0)
-      offsetTask[curT] = offsetTask[curT - 1] + nbPPerTask[curT - 1];
-  }
   /*if(rank == 0){
     for(curT = 0; curT < nbT; curT++)
       printf("%d ", nbPPerTask[curT]);
@@ -290,20 +278,32 @@ void run_simulation(int rank, int nbT) {
   for(curT = 0; curT <= nbT; curT++)
     printf("in rank %d curT : %d -> %d\n", rank, curT, nbPPerTask[curT + 1]);
   printf("\n");*/
-  int nbS = 0;
 
   while (t < T_FINAL && nparticles>0) {
+    if(nbpartChanged){
+      /*calculates how many particles for all the threads + first particle of each thread*/
+      int curT;
+      nbPPerTask[0] = 0;
+      for(curT = 0; curT < nbT; curT++){
+        nbPPerTask[curT] = nparticles / nbT;
+        if(curT < nparticles % nbT)
+          nbPPerTask[curT]++;
+        nbPPerTask[curT] *= 5;//to be used directly in allgatherv : 5 values for each particle : pos x pos y, vel x, vel y, mass (mass is set to zero if particles is out)
+        if(curT > 0)
+          offsetTask[curT] = offsetTask[curT - 1] + nbPPerTask[curT - 1];
+      }
+
+      //printf("pour rank : %d, fPO : %d, lPO : %d, nbPO %d \n", rank, offsetTask[rank], nbPPerTask[rank], offsetTask[rank] + nbPPerTask[rank]);
+      fPart = offsetTask[rank] / 5;
+      nbPart = nbPPerTask[rank] / 5;
+      lPart = fPart + nbPart;
+
+      nbpartChanged = 0;
+    }
     //printf("Rank : %d Begin iteration : %d\n", rank, mem_node.nb_free);
-    nbDeletedParts = 0;
+    nbDeletedParts = 0;//to share between threads how many particles were deleted
     /* Update time. */
     t += dt;
-
-    /*constructs tree*/
-    /*init();
-    printf("init of node root worked in rank %d\n", rank);
-    insert_all_particles(nparticles, particles, root);
-    printf("insertion of all parts worked in %d\n", rank);
-    fflush(stdout);*/
 
     /* Calculates forces applied on particles from fPart to lPart*/
     int unused = compute_force_in_node(root, fPart, lPart, 0);
@@ -345,7 +345,7 @@ void run_simulation(int rank, int nbT) {
 
     MPI_Allreduce(&nbDeletedParts, &totPartsDel, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    //MPI_Barrier(MPI_COMM_WORLD);
 
     max_acc = newMaxAcc;
     max_speed = newMaxSpeed;
@@ -367,8 +367,10 @@ void run_simulation(int rank, int nbT) {
     //printf("Rank : %d after free : %d\n", rank, mem_node.nb_free);
     root = new_root;
 
-    if(totPartsDel > 0)
+    if(totPartsDel > 0){
       printf("Nb parts deleted : %d => newNbParts = %d\n", totPartsDel, nparticles);
+      nbpartChanged = 1;
+    }
     nparticles -= totPartsDel;
 
     /* Adjust dt based on maximum speed and acceleration--this

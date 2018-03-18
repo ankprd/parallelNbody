@@ -39,12 +39,13 @@ __global__ void calcForce(particle_t *d_particles, particle_t *d_nparticles, int
 {
   int i, j;
   i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i + fPart < d_nbP - lPart){
-    d_nparticles[i - fPart].x_force = 0;
-    d_nparticles[i - fPart].y_force = 0;
+  if (i + fPart < lPart){
+    //printf("calc force de part  %d\n", i - fPart);
+    d_nparticles[i].x_force = 0;
+    d_nparticles[i].y_force = 0;
     //printf("calculating for part %d \n", i);
     for(j = 0; j < d_nbP; j++)
-        compute_force(&d_nparticles[i - fPart], d_particles[j].x_pos, d_particles[j].y_pos, d_particles[j].mass);//on modifie nparticle, et on prend les infos de d_particle
+        compute_force(&d_nparticles[i], d_particles[j].x_pos, d_particles[j].y_pos, d_particles[j].mass);//on modifie nparticle, et on prend les infos de d_particle
   }
 }
 
@@ -61,24 +62,24 @@ extern "C" void finalizeCuda(){
 extern "C" void all_move_particles(double step, int fPart, int lPart)
 {
   //nparticles = nbParts;
-  //printf("Nb parts in gpu : %d\n", nparticles);
+  /*printf("In gpu : fPart : %d lPart : %d\n", fPart, lPart);
   int i;
   for(i=fPart; i<lPart; i++) {
     particle_t*p = &particles[i];
-    printf("in .cu particle={pos=(%f,%f), vel=(%f,%f)}\n", p->x_pos, p->y_pos, p->x_vel, p->y_vel);
-  }
+    printf("in .cu rank %d particle={pos=(%f,%f), vel=(%f,%f)}\n", fPart / 2, p->x_pos, p->y_pos, p->x_vel, p->y_vel);
+  }*/
 
   cudaMemcpy(d_particles, particles, nparticles * sizeof(particle_t), cudaMemcpyHostToDevice);
   cudaMemcpy(d_nparticles, particles + fPart, (lPart - fPart) * sizeof(particle_t), cudaMemcpyHostToDevice);
 
   calcForce<<<1000000, 10>>>(d_particles, d_nparticles, nparticles, fPart, lPart);
 
-  for(i=fPart; i<lPart; i++) {
-    particle_t*p = &particles[i];
-    printf("in .cu particle={pos=(%f,%f), vel=(%f,%f), force=(%f,%f)}\n", p->x_pos, p->y_pos, p->x_vel, p->y_vel, p->x_force, p->y_force);
-  }
-
   cudaMemcpy(particles + fPart, d_nparticles, (lPart - fPart) * sizeof(particle_t), cudaMemcpyDeviceToHost);
+
+  /*for(i=fPart; i<lPart; i++) {
+    particle_t*p = &particles[i];
+    printf("in .cu prank %d article={pos=(%f,%f), vel=(%f,%f), force=(%f,%f)}\n", fPart / 2, p->x_pos, p->y_pos, p->x_vel, p->y_vel, p->x_force, p->y_force);
+  }*/
   /*for(i=0; i<nparticles; i++) {
     particle_t*p = &particles[i];
     printf("in .cu after calc particle={pos=(%f,%f), vel=(%f,%f)}\n", p->x_pos, p->y_pos, p->x_vel, p->y_vel);

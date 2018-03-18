@@ -23,7 +23,7 @@ void finalizeCuda();
 
 FILE* f_out=NULL;
 
-int nparticles=10;      /* number of particles */
+int nparticles=100000;      /* number of particles */
 float T_FINAL=1.0;     /* simulation end time */
 particle_t*particles;
 
@@ -35,7 +35,7 @@ void init() {
   initCuda();
 }
 
-#define DUMP_RESULT
+
 
 #ifdef DISPLAY
 Display *theDisplay;  /* These three variables are required to open the */
@@ -98,8 +98,8 @@ void run_simulation(int rank, int nbT) {
   int lPart = fPart + nbPart;
   //printf("pour rank : %d, fP : %d, lP : %d\n", rank, fPart, lPart);
 
-  double* rcvVal = (double*)malloc(sizeof(double) * nparticles * 5);
-  double* sndVal = (double*)malloc(sizeof(double) * nbPart * 5);
+  double* rcvVal = (double*)malloc(sizeof(double) * nparticles * 4);
+  double* sndVal = (double*)malloc(sizeof(double) * nbPart * 4);
   int* nbPPerTask = (int*)malloc(sizeof(int) * nbT);
   int* offsetTask = (int*)malloc(sizeof(int) * nbT);
   offsetTask[0] = 0;
@@ -115,7 +115,7 @@ void run_simulation(int rank, int nbT) {
     nbPPerTask[curT] = nparticles / nbT;
     if(curT < nparticles % nbT)
       nbPPerTask[curT]++;
-    nbPPerTask[curT] *= 5;//car on va s'en servir dans le allGatherV et 5 car on envoie la masse aussi mtn
+    nbPPerTask[curT] *= 4;//car on va s'en servir dans le allGatherV 
     if(curT > 0)
       offsetTask[curT] = offsetTask[curT - 1] + nbPPerTask[curT - 1];
   }
@@ -125,33 +125,41 @@ void run_simulation(int rank, int nbT) {
     t += dt;
     /* Move particles with the current and compute rms velocity. */ 
     int i, id; 
-    for(i=0; i<nparticles; i++) {
+    /*for(i=0; i<nparticles; i++) {
       particle_t*p = &particles[i];
       printf("in rank %d particle={pos=(%f,%f), vel=(%f,%f)}\n", rank, p->x_pos, p->y_pos, p->x_vel, p->y_vel);
-    }
+    }*/
     all_move_particles(dt, fPart, lPart);
     for(i=fPart; i<lPart; i++) {
         move_particle(&particles[i], dt);
     }
 
+    /*for(i=0; i<nparticles; i++) {
+      particle_t*p = &particles[i];
+      printf("in rank %d after calc particle={pos=(%f,%f), vel=(%f,%f)}\n", rank, p->x_pos, p->y_pos, p->x_vel, p->y_vel);
+    }*/
+
 	for (i = fPart; i < lPart; i++) {
 		id = i - fPart;
-		sndVal[5 * id] = particles[i].x_pos;
-		sndVal[5 * id + 1] = particles[i].y_pos;
-		sndVal[5 * id + 2] = particles[i].x_vel;
-		sndVal[5 * id + 3] = particles[i].y_vel;
-        sndVal[5 * id + 4] = particles[i].mass;
+		sndVal[4 * id] = particles[i].x_pos;
+		sndVal[4 * id + 1] = particles[i].y_pos;
+		sndVal[4 * id + 2] = particles[i].x_vel;
+		sndVal[4 * id + 3] = particles[i].y_vel;
 	}
-    MPI_Allgatherv(sndVal, nbPart * 5, MPI_DOUBLE, rcvVal, nbPPerTask, offsetTask, MPI_DOUBLE, MPI_COMM_WORLD);
+    MPI_Allgatherv(sndVal, nbPart * 4, MPI_DOUBLE, rcvVal, nbPPerTask, offsetTask, MPI_DOUBLE, MPI_COMM_WORLD);
 
     for (i = 0; i < nparticles; i++) {
-		particles[i].x_pos = rcvVal[5 * i];
-		particles[i].y_pos = rcvVal[5 * i + 1];
-		particles[i].x_vel = rcvVal[5 * i + 2];
-		particles[i].y_vel = rcvVal[5 * i + 3];
-        particles[i].mass = rcvVal[5 * i + 4];
+		particles[i].x_pos = rcvVal[4 * i];
+		particles[i].y_pos = rcvVal[4 * i + 1];
+		particles[i].x_vel = rcvVal[4 * i + 2];
+		particles[i].y_vel = rcvVal[4 * i + 3];
 		//printf("Process %d updated particle %d\n", rank, i);
 	}
+ 
+    /*for(i=0; i<nparticles; i++) {
+      particle_t*p = &particles[i];
+      printf("in rank %d after gatherv particle={pos=(%f,%f), vel=(%f,%f)}\n", rank, p->x_pos, p->y_pos, p->x_vel, p->y_vel);
+    }*/
 
     //printDebug(1, rank);
     //printf("\n\n\n");

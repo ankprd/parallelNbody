@@ -22,8 +22,8 @@
 
 FILE* f_out=NULL;
 
-int nparticles=10;      /* number of particles */
-float T_FINAL=1.0;     /* simulation end time */
+int nparticles=100;      /* number of particles */
+float T_FINAL=100;     /* simulation end time */
 
 particle_t*particles;
 
@@ -35,7 +35,7 @@ double max_acc = 0;
 double max_speed = 0;
 
 void init() {
-  init_alloc(4*nparticles);
+  init_alloc(100*nparticles);
   root = malloc(sizeof(node_t));
   init_node(root, NULL, XMIN, XMAX, YMIN, YMAX);
 }

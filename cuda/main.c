@@ -22,7 +22,7 @@ void finalizeCuda();
 
 FILE* f_out=NULL;
 
-int nparticles=10000;      /* number of particles */
+int nparticles=100000;      /* number of particles */
 float T_FINAL=1.0;     /* simulation end time */
 particle_t*particles;
 
@@ -34,7 +34,6 @@ void init() {
   initCuda();
 }
 
-#define DUMP_RESULT
 
 #ifdef DISPLAY
 Display *theDisplay;  /* These three variables are required to open the */
@@ -160,12 +159,12 @@ int main(int argc, char**argv)
   print_all_particles(f_out);
   fclose(f_out);
 #endif
-
-  printf("-----------------------------\n");
-  printf("nparticles: %d\n", nparticles);
-  printf("T_FINAL: %f\n", T_FINAL);
-  printf("-----------------------------\n");
-  printf("Simulation took %lf s to complete\n", duration);
+  FILE* f2_out = fopen("temps.log", "w");
+  fprintf(f2_out, "-----------------------------\n");
+  fprintf(f2_out, "nparticles: %d\n", nparticles);
+  fprintf(f2_out, "T_FINAL: %f\n", T_FINAL);
+  fprintf(f2_out, "-----------------------------\n");
+  fprintf(f2_out, "Simulation took %lf s to complete\n", duration);
 
 #ifdef DISPLAY
   clear_display();
