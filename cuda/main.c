@@ -6,6 +6,8 @@
 #include <assert.h>
 #include <unistd.h>
 
+#define DISPLAY
+
 #ifdef DISPLAY
 #include "ui.h"
 #include <X11/Xlib.h>
@@ -22,7 +24,7 @@ void finalizeCuda();
 
 FILE* f_out=NULL;
 
-int nparticles=100000;      /* number of particles */
+int nparticles=10000;      /* number of particles */
 float T_FINAL=1.0;     /* simulation end time */
 particle_t*particles;
 

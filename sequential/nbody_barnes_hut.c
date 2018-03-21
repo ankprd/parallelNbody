@@ -289,11 +289,15 @@ int main(int argc, char**argv)
   fclose(f_out);
 #endif
 
-  printf("-----------------------------\n");
-  printf("nparticles: %d\n", nparticles);
-  printf("T_FINAL: %f\n", T_FINAL);
-  printf("-----------------------------\n");
-  printf("Simulation took %lf s to complete\n", duration);
+  FILE* f_out4 = fopen("tmps.log", "w");
+  assert(f_out4);
+  fprintf(f_out4, "-----------------------------\n");
+  fprintf(f_out4, "nparticles: %d\n", nparticles);
+  fprintf(f_out4, "T_FINAL: %f\n", T_FINAL);
+  fprintf(f_out4, "-----------------------------\n");
+  fprintf(f_out4, "Simulation took %lf s to complete\n", duration);
+
+  fclose(f_out4);
 
 #ifdef DISPLAY
   node_t *n = root;

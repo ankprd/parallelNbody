@@ -27,7 +27,7 @@
 
 FILE* f_out=NULL;
 
-int nparticles=10;      /* number of particles */
+int nparticles=10000;      /* number of particles */
 float T_FINAL=1.0;     /* simulation end time */
 int nbDeletedParts;
 
@@ -153,7 +153,7 @@ void compute_force_on_particle(node_t* n, particle_t *p) {
   }
 }
 
-/*calculates force on particle iff it is in [fPart, lPart[*/
+/* calculates force on particle iff it is in [fPart, lPart[ */
 int compute_force_in_node(node_t *n, int fPart, int lPart, int idP) {
   if(!n) return 0;
 
@@ -241,9 +241,7 @@ void insert_all_particles(int nparticles, particle_t*particles, node_t*Nroot, in
   int i;
   for(i=0; i<nparticles; i++) {
     if(particles[i].mass >= 0.5){
-    //printf("Rank : %d insertion of parts %d : %d\n ", rank, i , mem_node.nb_free);
-    //fflush(stdout);
-    insert_particle(&particles[i], Nroot);}
+      insert_particle(&particles[i], Nroot);}
   }
 }
 
@@ -269,21 +267,6 @@ int run_simulation(int rank, int nbT) {
   double t1Calc, t2Calc; 
   t1Calc = MPI_Wtime(); 
 
-  /*if(rank == 0){
-    for(curT = 0; curT < nbT; curT++)
-      printf("%d ", nbPPerTask[curT]);
-  }
-  printf("\n");
-  if(rank == 0){
-    for(curT = 0; curT < nbT; curT++)
-      printf("%d ", offsetTask[curT]);
-  }
-  printf("\n");*/
-  /*printf("Pour nbT = %d et nbparts = %d in process %d\n", nbT, nparticles, rank);
-  for(curT = 0; curT <= nbT; curT++)
-    printf("in rank %d curT : %d -> %d\n", rank, curT, nbPPerTask[curT + 1]);
-  printf("\n");*/
-
   while (t < T_FINAL && nparticles>0) {
     if(nbpartChanged){
       /*calculates how many particles for all the threads + first particle of each thread*/
@@ -298,16 +281,15 @@ int run_simulation(int rank, int nbT) {
           offsetTask[curT] = offsetTask[curT - 1] + nbPPerTask[curT - 1];
       }
 
-      /*printf("pour rank : %d, fPO : %d, lPO : %d, nbPO %d \n", rank, offsetTask[rank], offsetTask[rank] + nbPPerTask[rank], nbPPerTask[rank]);
-      fflush(stdout);*/
       fPart = offsetTask[rank] / 5;
       nbPart = nbPPerTask[rank] / 5;
       lPart = fPart + nbPart;
 
       nbpartChanged = 0;
     }
-    //printf("Rank : %d Begin iteration : %d\n", rank, mem_node.nb_free);
-    nbDeletedParts = 0;//to share between threads how many particles were deleted
+    //printf("Rank : %d\n", rank);
+    nbDeletedParts = 0; //to share between threads how many particles were deleted
+
     /* Update time. */
     t += dt;
 
@@ -341,9 +323,6 @@ int run_simulation(int rank, int nbT) {
 			//printf("Process %d updated particle %d\n", rank, i);
 		}
 
-    //printDebug(1, rank);
-    //printf("\n\n\n");
-
     double newMaxSpeed, newMaxAcc;
     int totPartsDel = 0;
     //printf("At time %lf Process %d before reduce : max_acc -> %lf max_speed -> %lf\n", t, rank, max_acc, max_speed);	
@@ -362,9 +341,6 @@ int run_simulation(int rank, int nbT) {
 
     node_t* new_root = malloc(sizeof(node_t));
     init_node(new_root, NULL, XMIN, XMAX, YMIN, YMAX);
-    //printf("init of node root worked in rank %d\n", rank);
-    //fflush(stdout);
-    //printf("Rank : %d after declaration of new root : %d\n", rank, mem_node.nb_free);
 
     /* then move all particles and return statistics */
     insert_all_particles(nparticles, particles, new_root, rank);
@@ -436,13 +412,10 @@ int main(int argc, char**argv)
   particles = malloc(sizeof(particle_t)*nparticles);
   newParticles = malloc(sizeof(particle_t)*nparticles);
   all_init_particles(nparticles, particles);
-  //printf("Rank : %d after all init : %d\n", rank, mem_node.nb_free);
   insert_all_particles(nparticles, particles, root, rank);
-  //printf("Rank : %d after insert all : %d\n", rank, mem_node.nb_free);
-  //printDebug();
-  //printf("init of all parts worked in main\n");
 
 if(rank == 0){
+    printf("nbTasks : %d\n", nbTasks);
   /* Initialize thread data structures */
 #ifdef DISPLAY
   /* Open an X window to display the particles */
@@ -459,13 +432,14 @@ if(rank == 0){
 
   double duration = (t2.tv_sec -t1.tv_sec)+((t2.tv_usec-t1.tv_usec)/1e6);
 
+  
 #ifdef DUMP_RESULT
   FILE* f_out = fopen("particles.log", "w");
 	assert(f_out);
 	print_all_particles(f_out);
 	fclose(f_out);
 #endif
-
+  printf("Barnes-hut MPI\n");
   printf("-----------------------------\n");
   printf("nparticles: %d\n", nparticles);
   printf("T_FINAL: %f\n", T_FINAL);
@@ -488,12 +462,15 @@ if(rank == 0){
   else
     nbIter = run_simulation(rank, nbTasks);
 
+  /*
+  //Used to calculate average calculation time per rank
   char nomF[4] = "i.t";
   nomF[0] = rank + '0';
   //printf("%c", rank - '0');
   FILE* f_out3 = fopen(nomF, "w");
   fprintf(f_out3, "%f %f\n", timing[0] / (double) nbIter, timing[1] / (double) nbIter);
 	fclose(f_out3);
+  */
 
   free(particles);
   free(newParticles);
